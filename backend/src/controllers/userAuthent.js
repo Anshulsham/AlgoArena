@@ -11,7 +11,7 @@ const TOKEN_MAX_AGE = 60 * 60 * 1000;
 
 const getBaseCookieOptions = () => ({
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: process.env.COOKIE_SECURE === 'true',
     sameSite: 'strict'
 });
 
