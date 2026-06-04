@@ -3,8 +3,9 @@ import { NavLink } from 'react-router';
 import { useSelector, useDispatch } from 'react-redux';
 import axiosClient from '../utils/axiosClient';
 import { logoutUser } from '../authSlice';
-import { 
-  CheckCircle, ArrowLeft, ChevronRight, Trophy, Zap, 
+import DeleteProfileModal from '../components/DeleteProfileModal';
+import {
+  CheckCircle, ArrowLeft, ChevronRight, Trophy, Zap,
   Activity, MapPin, Crown, MessageSquare, Eye, Calendar, Sparkles, Hash, Box
 } from 'lucide-react';
 import StreakCalendar from '../components/StreakCalendar';
@@ -13,10 +14,11 @@ function UserProfile() {
   const dispatch = useDispatch();
   const { user } = useSelector((state) => state.auth);
   const [profileUser, setProfileUser] = useState(user);
-  
+
   const [solvedProblems, setSolvedProblems] = useState([]);
   const [myDiscussions, setMyDiscussions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   // --- CONFIGURATION ---
   const TOTAL_COUNTS = { total: 24, easy: 10, medium: 8, hard: 6 };
@@ -27,17 +29,18 @@ function UserProfile() {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [solvedRes, discussRes, userRes] = await Promise.all([
+          const [solvedRes, discussRes, userRes] = await Promise.all([
           axiosClient.get('/problem/problemSolvedByUser'),
           axiosClient.get('/discuss/all'),
           axiosClient.get('/user/me')
         ]);
 
         setSolvedProblems(solvedRes.data);
-        setMyDiscussions(discussRes.data.filter(post => 
+        setMyDiscussions(discussRes.data.filter(post =>
           (post.author?._id === user?._id) || (post.author === user?._id)
         ));
         setProfileUser(userRes.data);
+
       } catch (error) {
         console.error('Error fetching profile data:', error);
       } finally {
@@ -85,7 +88,13 @@ function UserProfile() {
                 <NavLink to="/" className="text-[12px] font-black uppercase tracking-widest text-zinc-400 hover:text-zinc-900 transition-colors flex items-center gap-2">
                     <ArrowLeft size={16} /> Exit to Home
                 </NavLink>
-                <button onClick={handleLogout} className="text-[12px] font-black uppercase tracking-widest text-rose-500 hover:text-rose-600 transition-all">Sign Out</button>
+                <button onClick={handleLogout} className="text-[12px] font-black uppercase tracking-widest text-zinc-700 hover:text-zinc-900 transition-all">Sign Out</button>
+                <button
+                  onClick={() => setShowDeleteModal(true)}
+                  className="text-[12px] font-black uppercase tracking-widest text-rose-500 hover:text-rose-600 transition-all px-3 py-1.5 hover:bg-rose-50 rounded-lg"
+                >
+                  Delete Account
+                </button>
             </div>
         </div>
       </nav>
@@ -284,6 +293,11 @@ function UserProfile() {
             </div>
         </div>
       </main>
+
+      <DeleteProfileModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+      />
     </div>
   );
 }

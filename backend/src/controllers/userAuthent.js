@@ -7,6 +7,19 @@ const Submission = require("../models/submission")
 
 require('dotenv').config()
 
+const TOKEN_MAX_AGE = 60 * 60 * 1000;
+
+const getBaseCookieOptions = () => ({
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict'
+});
+
+const getAuthCookieOptions = () => ({
+    ...getBaseCookieOptions(),
+    maxAge: TOKEN_MAX_AGE
+});
+
 
 const register = async (req, res) => {
     try {
@@ -41,7 +54,7 @@ const register = async (req, res) => {
             { expiresIn: 60 * 60 }
         );
 
-        res.cookie('token', token, { maxAge: 60 * 60 * 1000 });
+        res.cookie('token', token, getAuthCookieOptions());
         res.status(201).json({
             user: {
                 firstName: user.firstName,
@@ -53,9 +66,13 @@ const register = async (req, res) => {
         });
 
     } catch (error) {
-        // ✅ FIX: Log the REAL error object
-        console.error("❌ REGISTER ERROR:", error); 
-        
+        console.error("❌ REGISTER ERROR:", error);
+
+        // MongoDB duplicate key error — don't leak DB details to client
+        if (error.code === 11000) {
+            return res.status(409).json({ message: "An account with this email already exists." });
+        }
+
         res.status(400).json({ 
             message: error.message || "Registration Failed"
         });
@@ -75,10 +92,13 @@ const login = async (req,res)=>{
 
         const user = await User.findOne({emailId});
 
+        if(!user)
+            return res.status(401).json({ message: "Invalid credentials" });
+
         const match = await bcrypt.compare(password,user.password);
 
         if(!match)
-            throw new Error("Invalid Login Credentials");
+            return res.status(401).json({ message: "Invalid credentials" });
 
         const reply = {
             firstName: user.firstName,
@@ -88,15 +108,15 @@ const login = async (req,res)=>{
         }
 
         const token =  jwt.sign({_id:user._id , emailId:emailId, role:user.role},process.env.JWT_KEY,{expiresIn: 60*60});
-        res.cookie('token',token,{maxAge: 60*60*1000});
+        res.cookie('token',token,getAuthCookieOptions());
         res.status(201).json({
             user:reply,
-            message:"Loggin Successfully"
+            message:"Login Successfully"
         })
     }
     catch(err){
-        console.error("login error:", err.response?.data);
-        res.status(401).send("Error: "+err);
+        console.error("login error:", err);
+        res.status(401).json({ message: "Invalid credentials" });
     }
 }
 
@@ -115,57 +135,89 @@ const logout = async(req,res)=>{
     //    Token add kar dung Redis ke blockList
     //    Cookies ko clear kar dena.....
 
-    res.cookie("token",null,{expires: new Date(Date.now())});
+    res.clearCookie("token", getBaseCookieOptions());
     res.send("Logged Out Succesfully");
 
     }
     catch(err){
-        console.error("logout error:", err.response?.data);
-       res.status(503).send("Error: "+err);
+        console.error("logout error:", err);
+       res.status(503).json({ message: "Logout failed" });
     }
 }
 
 
 const adminRegister = async(req,res)=>{
     try{
-        // validate the data;
-    //   if(req.result.role!='admin')
-    //     throw new Error("Invalid Credentials");  
-      validate(req.body); 
-      const {firstName, emailId, password}  = req.body;
+      validate(req.body);
+      const { firstName, emailId, password } = req.body;
 
-      req.body.password = await bcrypt.hash(password, 10);
-    //
-    
-     const user =  await User.create(req.body);
-     const token =  jwt.sign({_id:user._id , emailId:emailId, role:user.role},process.env.JWT_KEY,{expiresIn: 60*60});
-     res.cookie('token',token,{maxAge: 60*60*1000});
-     res.status(201).send("User Registered Successfully");
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      const userData = {
+        firstName: firstName,
+        emailId: emailId,
+        password: hashedPassword,
+        role: 'admin'
+      };
+
+      const user = await User.create(userData);
+      const token = jwt.sign(
+        { _id: user._id, emailId: emailId, role: user.role },
+        process.env.JWT_KEY,
+        { expiresIn: 60 * 60 }
+      );
+
+      res.cookie('token', token, getAuthCookieOptions());
+      res.status(201).json({
+        user: {
+          firstName: user.firstName,
+          emailId: user.emailId,
+          _id: user._id,
+          role: user.role,
+        },
+        message: "Admin Registered Successfully"
+      });
     }
     catch(err){
-        console.error("adminRegister error:", err.response?.data);
-        res.status(400).send("Error: "+err);
+        console.error("adminRegister error:", err);
+
+        // MongoDB duplicate key error — don't leak DB details to client
+        if (err.code === 11000) {
+            return res.status(409).json({ message: "An account with this email already exists." });
+        }
+
+        res.status(400).json({ message: err.message || "Registration failed" });
     }
 }
 
 const deleteProfile = async(req,res)=>{
-  
+
     try{
        const userId = req.result._id;
-      
-    // userSchema delete
+
+    // Delete user
     await User.findByIdAndDelete(userId);
 
-    // Submission se bhi delete karo...
-    
-    // await Submission.deleteMany({userId});
-    
-    res.status(200).send("Deleted Successfully");
+    // Delete all submissions by this user
+    await Submission.deleteMany({userId});
+
+    // Delete all discussions authored by this user
+    const Discussion = require("../models/Discussion");
+    await Discussion.deleteMany({ author: userId });
+
+    // Delete all comments authored by this user
+    const Comment = require("../models/Comment");
+    await Comment.deleteMany({ author: userId });
+
+    // Clear the auth cookie
+    res.clearCookie("token", getBaseCookieOptions());
+
+    res.status(200).json({ message: "Profile deleted successfully" });
 
     }
     catch(err){
-        console.error("delete error:", err.response?.data);
-        res.status(500).send("Internal Server Error");
+        console.error("delete error:", err);
+        res.status(500).json({ message: "Failed to delete profile" });
     }
 }
 

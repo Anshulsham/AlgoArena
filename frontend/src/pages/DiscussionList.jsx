@@ -37,11 +37,9 @@ function DiscussionList() {
   const fetchDiscussions = async () => {
     setLoading(true);
     try {
-      const { data } = await axiosClient.get('/discuss/all');
-      const filtered = activeCategory === 'all' 
-        ? data 
-        : data.filter(d => d.category === activeCategory);
-      setDiscussions(filtered);
+      const params = activeCategory !== 'all' ? { category: activeCategory } : {};
+      const { data } = await axiosClient.get('/discuss/all', { params });
+      setDiscussions(data);
     } catch (error) {
       console.error("Failed to fetch discussions", error);
     } finally {

@@ -1,6 +1,7 @@
 const express = require('express')
 const app = express();
 require('dotenv').config();
+const helmet = require('helmet');
 const main =  require('./config/db')
 const cookieParser =  require('cookie-parser');
 const authRouter = require("./routes/userAuth");
@@ -13,12 +14,13 @@ const videoRouter = require("./routes/videoCreator");
 const discussionRouter = require("./routes/discussionRoutes");
 const cors = require('cors')
 
+app.use(helmet());
 app.use(cors({
-    origin: 'http://localhost:5173',
-    credentials: true 
+    origin: process.env.ALLOWED_ORIGIN || 'http://localhost:5173',
+    credentials: true
 }))
 
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 
 app.use('/user',authRouter);
@@ -27,6 +29,11 @@ app.use('/submission',submitRouter);
 app.use('/ai',aiRouter);
 app.use("/video",videoRouter);
 app.use("/discuss", discussionRouter);
+
+// Health check — used by cloud platforms to verify the server is alive
+app.get('/health', (req, res) => {
+    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
 
 const InitalizeConnection = async ()=>{
     try{

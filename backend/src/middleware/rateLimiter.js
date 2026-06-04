@@ -5,7 +5,7 @@ const rateLimiter = (limit, duration) => {
         try {
             // Identifier: Use User ID if logged in, otherwise fall back to IP address
             // This prevents logged-in users from bypassing limits by switching IPs
-            const identifier = req.user ? req.user._id.toString() : req.ip; 
+            const identifier = req.result ? req.result._id.toString() : req.ip; 
             const key = `rate_limit:${identifier}:${req.originalUrl}`; // Unique key per user per route
 
             // Increment the counter for this user/route combo

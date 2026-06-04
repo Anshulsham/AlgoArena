@@ -25,27 +25,50 @@ function Homepage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalCompanies, setModalCompanies] = useState([]);
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const LIMIT = 10;
+
   const [filters, setFilters] = useState({
     difficulty: 'all',
     tag: 'all',
     status: 'all' 
   });
 
+  // Reset to page 1 whenever filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filters.difficulty, filters.tag]);
+
   useEffect(() => {
     const fetchProblems = async () => {
       try {
-        const { data } = await axiosClient.get('/problem/getAllProblem');
-        const enrichedData = data.map(prob => {
-             const shuffled = [...COMPANY_LIST].sort(() => 0.5 - Math.random());
-             const count = Math.floor(Math.random() * 5) + 1; 
-             return { ...prob, companies: shuffled.slice(0, count) };
+        const params = { page: currentPage, limit: LIMIT };
+        if (filters.difficulty !== 'all') params.difficulty = filters.difficulty;
+        if (filters.tag !== 'all') params.tag = filters.tag;
+
+        const { data } = await axiosClient.get('/problem/getAllProblem', { params });
+
+        const enrichedData = data.problems.map(prob => {
+          const shuffled = [...COMPANY_LIST].sort(() => 0.5 - Math.random());
+          const count = Math.floor(Math.random() * 5) + 1;
+          return { ...prob, companies: shuffled.slice(0, count) };
         });
+
         setProblems(enrichedData);
+        setTotalPages(data.totalPages);
+        setTotalCount(data.totalCount);
       } catch (error) {
         console.error('Error fetching problems:', error);
       }
     };
 
+    fetchProblems();
+  }, [currentPage, filters.difficulty, filters.tag]);
+
+  useEffect(() => {
     const fetchSolvedProblems = async () => {
       try {
         const { data } = await axiosClient.get('/problem/problemSolvedByUser');
@@ -54,8 +77,6 @@ function Homepage() {
         console.error('Error fetching solved problems:', error);
       }
     };
-
-    fetchProblems();
     if (user) fetchSolvedProblems();
   }, [user]);
 
@@ -71,16 +92,13 @@ function Homepage() {
     setIsModalOpen(true);
   };
 
-  const filteredProblems = problems.filter(problem => {
-    const difficultyMatch = filters.difficulty === 'all' || problem.difficulty === filters.difficulty;
-    const tagMatch = filters.tag === 'all' || problem.tags === filters.tag;
-    const statusMatch = filters.status === 'all' || 
-                      (filters.status === 'solved' && solvedProblems.some(sp => sp._id === problem._id));
-    return difficultyMatch && tagMatch && statusMatch;
-  });
+  // "solved" status filter is client-side only (cross-references solvedProblems)
+  const filteredProblems = filters.status === 'solved'
+    ? problems.filter(p => solvedProblems.some(sp => sp._id === p._id))
+    : problems;
 
   const stats = {
-    total: problems.length,
+    total: totalCount,
     easy: problems.filter(p => p.difficulty?.toLowerCase() === 'easy').length,
     medium: problems.filter(p => p.difficulty?.toLowerCase() === 'medium').length,
     hard: problems.filter(p => p.difficulty?.toLowerCase() === 'hard').length,
@@ -222,7 +240,10 @@ function Homepage() {
             
             {(filters.status !== 'all' || filters.difficulty !== 'all' || filters.tag !== 'all') && (
                 <button
-                    onClick={() => setFilters({ status: 'all', difficulty: 'all', tag: 'all' })}
+                    onClick={() => {
+                      setFilters({ status: 'all', difficulty: 'all', tag: 'all' });
+                      setCurrentPage(1);
+                    }}
                     className="flex items-center gap-2 text-xs font-bold text-rose-500 hover:text-rose-600 transition-colors"
                 >
                     <FilterX className="w-3.5 h-3.5" /> Reset Filters
@@ -317,7 +338,60 @@ function Homepage() {
                 </div>
             </div>
         </div>
-        
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-6 px-2">
+            <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">
+              Page {currentPage} of {totalPages} &mdash; {totalCount} problems
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest border border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+              >
+                ← Prev
+              </button>
+
+              {/* Page number buttons — show up to 5 around current page */}
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
+                .reduce((acc, p, idx, arr) => {
+                  if (idx > 0 && p - arr[idx - 1] > 1) acc.push('...');
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((item, i) =>
+                  item === '...' ? (
+                    <span key={`ellipsis-${i}`} className="px-2 text-zinc-300 font-bold text-xs">…</span>
+                  ) : (
+                    <button
+                      key={item}
+                      onClick={() => setCurrentPage(item)}
+                      className={`w-9 h-9 rounded-xl text-xs font-black border transition-all ${
+                        currentPage === item
+                          ? 'bg-zinc-950 text-white border-zinc-950 shadow-md'
+                          : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400'
+                      }`}
+                    >
+                      {item}
+                    </button>
+                  )
+                )
+              }
+
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest border border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+              >
+                Next →
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Modern Footer */}
         <div className="mt-20 py-12 border-t border-zinc-200 flex flex-col items-center gap-4">
             <div className="text-zinc-400 font-bold text-[10px] uppercase tracking-[0.3em]">Built for Performers</div>

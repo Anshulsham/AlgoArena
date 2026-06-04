@@ -64,6 +64,18 @@ export const logoutUser = createAsyncThunk(
   }
 );
 
+export const deleteProfile = createAsyncThunk(
+  'auth/deleteProfile',
+  async (_, { rejectWithValue }) => {
+    try {
+      await axiosClient.delete('/user/deleteProfile');
+      return null;
+    } catch (error) {
+      return handleError(error, rejectWithValue);
+    }
+  }
+);
+
 const authSlice = createSlice({
   name: 'auth',
   initialState: {
@@ -151,6 +163,22 @@ const authSlice = createSlice({
         state.error = action.payload?.message || 'Logout failed';
         state.isAuthenticated = false;
         state.user = null;
+      })
+
+      // Delete Profile Cases
+      .addCase(deleteProfile.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(deleteProfile.fulfilled, (state) => {
+        state.loading = false;
+        state.user = null;
+        state.isAuthenticated = false;
+        state.error = null;
+      })
+      .addCase(deleteProfile.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload?.message || 'Failed to delete profile';
       });
   }
 });

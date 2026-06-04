@@ -64,6 +64,9 @@ const submitBatch = async (submissions) => {
 
 const waiting = (timer) => new Promise((resolve) => setTimeout(resolve, timer));
 
+const JUDGE0_POLL_INTERVAL_MS = 2000;
+const JUDGE0_MAX_POLL_ATTEMPTS = 15;
+
 const submitToken = async (tokens) => {
     const tokenString = tokens.join(',');
     
@@ -82,7 +85,7 @@ const submitToken = async (tokens) => {
     };
 
     // Polling Logic
-    while (true) {
+    for (let attempt = 1; attempt <= JUDGE0_MAX_POLL_ATTEMPTS; attempt++) {
         try {
             const response = await axios.request(options);
             const submissions = response.data.submissions;
@@ -102,13 +105,17 @@ const submitToken = async (tokens) => {
             }
 
             // Wait 2 seconds
-            await waiting(2000);
+            if (attempt < JUDGE0_MAX_POLL_ATTEMPTS) {
+                await waiting(JUDGE0_POLL_INTERVAL_MS);
+            }
 
         } catch (error) {
             console.error("Judge0 Polling Error:", error.response?.data?.message || error.message);
             throw error;
         }
     }
+
+    throw new Error("Judge0 polling timed out");
 };
 
 module.exports = { getLanguageById, submitBatch, submitToken };

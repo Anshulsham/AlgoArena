@@ -107,8 +107,8 @@ const updateProblem = async (req,res)=>{
 
       const languageId = getLanguageById(language);
         
-      // I am creating Batch submission
-      const submissions = visibleTestCases.map((testcase)=>({
+      // I am creating Batch submission — validate against ALL test cases (visible + hidden)
+      const submissions = allTestCases.map((testcase)=>({
           source_code:completeCode,
           language_id: languageId,
           stdin: testcase.input,
@@ -208,20 +208,36 @@ const getProblemById = async(req,res)=>{
   }
 }
 
-const getAllProblem = async(req,res)=>{
+const getAllProblem = async(req, res) => {
+  try {
+    const page  = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 10));
+    const skip  = (page - 1) * limit;
 
-  try{
-     
-    const getProblem = await Problem.find({}).select('_id title difficulty tags');
+    // Build filter from optional query params
+    const filter = {};
+    if (req.query.difficulty && req.query.difficulty !== 'all') {
+      filter.difficulty = req.query.difficulty;
+    }
+    if (req.query.tag && req.query.tag !== 'all') {
+      filter.tags = req.query.tag;
+    }
 
-   if(getProblem.length==0)
-    return res.status(404).send("Problem is Missing");
+    const [problems, totalCount] = await Promise.all([
+      Problem.find(filter).select('_id title difficulty tags').skip(skip).limit(limit),
+      Problem.countDocuments(filter)
+    ]);
 
-
-   res.status(200).send(getProblem);
+    res.status(200).json({
+      problems,
+      totalCount,
+      totalPages: Math.ceil(totalCount / limit),
+      currentPage: page,
+      limit
+    });
   }
-  catch(err){
-    res.status(500).send("Error: "+err);
+  catch(err) {
+    res.status(500).send("Error: " + err);
   }
 }
 
@@ -252,10 +268,10 @@ const submittedProblem = async(req,res)=>{
     const userId = req.result._id;
     const problemId = req.params.pid;
 
-   const ans = await Submission.find({userId,problemId});
+  const ans = await Submission.find({userId,problemId});
   
   if(ans.length==0)
-    res.status(200).json([]);
+    return res.status(200).json([]);
 
   res.status(200).send(ans);
 
@@ -268,5 +284,4 @@ const submittedProblem = async(req,res)=>{
 
 
 module.exports = {createProblem,updateProblem,deleteProblem,getProblemById,getAllProblem,solvedAllProblembyUser,submittedProblem};
-
 
